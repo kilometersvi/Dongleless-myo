@@ -11,7 +11,9 @@ from bluepy import btle
 import myo_dicts
 
 # Author:
-#    Max Leefer 
+#    Max Leefer
+# Contributor:
+#   Siarhei Yorsh (MyrikLD)
 # Source:
 #    https://github.com/mamo91/Dongleless-myo
 # Free to modify and use as you wish, so long as my name remains in this file.
