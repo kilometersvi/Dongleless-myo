@@ -1,16 +1,14 @@
 from __future__ import print_function
-import btle
-import myo_dicts
-import struct
-import socket
-import json
-import time
-import math
-import pprint
+
 import logging as log
-import subprocess
-import sys
 import os
+import struct
+import subprocess
+import time
+
+from bluepy import btle
+#import btle
+import myo_dicts
 
 # Author:
 #    Max Leefer 
@@ -25,11 +23,13 @@ import os
 # Mixes up fist and wave in when worn on left arm with led toward elbow
 
 
-PATH = os.getcwd() 
+PATH = os.getcwd()
 
-busylog = False #decides whether emg/imu notifications will generate log messages.
-log.basicConfig(filename=PATH+"/dongleless.log", filemode = 'w', level = log.CRITICAL, #change log.CRITICAL to log.DEBUG to get log messages
+busylog = False  # decides whether emg/imu notifications will generate log messages.
+log.basicConfig(filename=PATH + "/dongleless.log", filemode='w', level=log.INFO,
+				# change log.CRITICAL to log.DEBUG to get log messages
 				format='%(asctime)s %(levelname)-8s %(message)s', datefmt='%H:%M:%S')
+
 
 class Connection(btle.Peripheral):
 	def __init__(self, mac):
@@ -39,14 +39,15 @@ class Connection(btle.Peripheral):
 		# self.writeCharacteristic(0x24, struct.pack('<bb', 0x00, 0x00),True) # Unsubscribe from classifier indications
 
 		# time.sleep(0.5)
- 
-		self.writeCharacteristic(0x24, struct.pack('<bb', 0x02, 0x00),True) # Subscribe to classifier indications
-		self.writeCharacteristic(0x1d, struct.pack('<bb', 0x01, 0x00),True) # Subscribe to imu notifications
-		self.writeCharacteristic(0x28, struct.pack('<bb', 0x01, 0x00),True) # Subscribe to emg notifications
-		self.writeCharacteristic(0x19, struct.pack('<bbbbb', 1,1,1,3,1) ,True ) # Tell the myo we want all the data
+
+		self.writeCharacteristic(0x24, struct.pack('<bb', 0x02, 0x00), True)  # Subscribe to classifier indications
+		self.writeCharacteristic(0x1d, struct.pack('<bb', 0x01, 0x00), True)  # Subscribe to imu notifications
+		self.writeCharacteristic(0x28, struct.pack('<bb', 0x01, 0x00), True)  # Subscribe to emg notifications
+		self.writeCharacteristic(0x19, struct.pack('<bbbbb', 1, 1, 1, 3, 1), True)  # Tell the myo we want all the data
 
 	def vibrate(self, length):
-		self.writeCharacteristic(0x19, struct.pack('<bbb', 0x03, 0x01, length),True)
+		self.writeCharacteristic(0x19, struct.pack('<bbb', 0x03, 0x01, length), True)
+
 
 class MyoDelegate(btle.DefaultDelegate):
 	def __init__(self, bindings, myo):
@@ -56,39 +57,44 @@ class MyoDelegate(btle.DefaultDelegate):
 	def handleNotification(self, cHandle, data):
 		if cHandle == 0x23:
 			log.debug("got pose notification")
-			ev_type=None
-			data=struct.unpack('>6b',data) #sometimes gets the poses mixed up, if this happens, try wearing it in a different orientation.
-			if data[0] == 3: # CLassifier
+			ev_type = None
+			data = struct.unpack('>6b',
+								 data)  # sometimes gets the poses mixed up, if this happens, try wearing it in a different orientation.
+			if data[0] == 3:  # CLassifier
 				ev_type = myo_dicts.pose[data[1]]
 				# print(ev_type)
 				if data[1] != 0:
-					self.myo.writeCharacteristic(0x19, struct.pack('<bbb', 0x03, 0x01, 0x01),True)
+					self.myo.writeCharacteristic(0x19, struct.pack('<bbb', 0x03, 0x01, 0x01), True)
 
 			else:
-				if data[0] == 1: #sync
+				if data[0] == 1:  # sync
 					log.info("Arm synced")
 					ev_type = "arm_synced"
-					#rewrite handles
-					self.myo.writeCharacteristic(0x19, struct.pack('<bbbbb', 1,1,0,3,1) ,True ) # Tell the myo we want IMU and classifier data
-					self.myo.writeCharacteristic(0x24, struct.pack('<bb', 0x02, 0x00),True) # Subscribe to classifier indications
-					self.myo.writeCharacteristic(0x28, struct.pack('<bb', 0x00, 0x00),True) # Subscribe to classifier indications
-					self.myo.writeCharacteristic(0x1d, struct.pack('<bb', 0x01, 0x00),True) # Subscribe to classifier indications
+					# rewrite handles
+					self.myo.writeCharacteristic(0x19, struct.pack('<bbbbb', 1, 1, 0, 3, 1),
+												 True)  # Tell the myo we want IMU and classifier data
+					self.myo.writeCharacteristic(0x24, struct.pack('<bb', 0x02, 0x00),
+												 True)  # Subscribe to classifier indications
+					self.myo.writeCharacteristic(0x28, struct.pack('<bb', 0x00, 0x00),
+												 True)  # Subscribe to classifier indications
+					self.myo.writeCharacteristic(0x1d, struct.pack('<bb', 0x01, 0x00),
+												 True)  # Subscribe to classifier indications
 					# self.myo.writeCharacteristic(0x1d, struct.pack('<bb', 0x01, 0x00),True) # Subscribe to IMU notifications
 
-					if data[1] == 2: #left arm
+					if data[1] == 2:  # left arm
 						self.arm = "left"
-					elif data[1] == 1: #right arm
+					elif data[1] == 1:  # right arm
 						self.arm = "right"
 					else:
 						self.arm = "unknown"
 					if 'arm_synced' in self.bindings:
 						self.bindings['arm_synced'](self.myo, myo_dicts.x_direction[data[2]], myo_dicts.arm[data[1]])
 					return
-			
+
 			if ev_type in self.bindings:
 				self.bindings[ev_type](self.myo)
-		
-		elif cHandle == 0x1c: # IMU
+
+		elif cHandle == 0x1c:  # IMU
 			data = struct.unpack('<10h', data)
 			quat = data[:4]
 			accel = data[4:7]
@@ -98,14 +104,15 @@ class MyoDelegate(btle.DefaultDelegate):
 			ev_type = "imu_data"
 			if "imu_data" in self.bindings:
 				self.bindings["imu_data"](self.myo, quat, accel, gyro)
-				
-		elif cHandle == 0x27: # EMG
-			data = struct.unpack('<8HB', data) # an extra byte for some reason
+
+		elif cHandle == 0x27:  # EMG
+			data = struct.unpack('<8HB', data)  # an extra byte for some reason
 			if busylog:
 				log.debug("got emg notification")
 			ev_type = "emg_data"
 			if "emg_data" in self.bindings:
 				self.bindings["emg_data"](self.myo, data[:8])
+
 
 # def quat_to_euler(w,x,y,z):
 # 	# Calculate Euler angles (roll, pitch, and yaw) from the unit quaternion.
@@ -132,65 +139,93 @@ def print_wrapper(*args):
 	print(args)
 
 
-
-
-#take a list of the events. 
+# take a list of the events.
 events = ("rest", "fist", "wave_in", "wave_out", "wave_left", "wave_right",
-"fingers_spread", "double_tap", "unknown","arm_synced", "arm_unsynced",
-"orientation_data", "gyroscope_data", "accelerometer_data", "imu_data", "emg_data")
-
-
-
-
+		  "fingers_spread", "double_tap", "unknown", "arm_synced", "arm_unsynced",
+		  "orientation_data", "gyroscope_data", "accelerometer_data", "imu_data", "emg_data")
 
 
 # Bluepy is more suited to getting default values like heartrate and such, it's not great at fetching by uuid.
 
-def find_myo_mac(blacklist):
-	sts = subprocess.Popen("sudo timeout -s SIGINT -k 0 3 sudo hcitool lescan > "+PATH+"/scan_results.txt", shell=True).wait() 
-	#timing is a bit weird.
-	with open(PATH+"/scan_results.txt") as res:
-		lines = list(res)
-	lis = []
+def find_mac(blacklist=list(), password=None, timeout=3, passive=False, root=True):
+	c = str()
+
+	if root:
+		sudo = 'sudo '
+		if password is not None:
+			c += 'echo ' + str(password) + ' | '
+			sudo += '-S '
+	else:
+		sudo = ''
+
+	if timeout is not None:
+		c += sudo + 'timeout -s SIGINT -k 0 ' + str(timeout) + ' '
+
+	c += sudo + 'hcitool lescan' + (' --passive' if passive else '')
+
+	if password is not None and root:
+		process = subprocess.Popen(c, stdout=subprocess.PIPE,
+								   stderr=subprocess.PIPE,
+								   stdin=subprocess.PIPE,
+								   shell=True)
+	else:
+		process = subprocess.Popen(c, stdout=subprocess.PIPE, shell=True)
+	output, unused_err = process.communicate()
+
+	retcode = process.poll()
+	if retcode != 124:
+		raise subprocess.CalledProcessError(retcode, c, output=output)
+
+	lines = output.strip().split('\n')
+	# timing is a bit weird.
+
+	lines = lines[1:]
+	ret = list()
 	for line in lines:
-		sp = line.split(' ')
-		if len(sp) >= 2 and len(sp[0].split(':')) == 6 and sp[0] not in lis and sp[0] not in blacklist:
-			lis.append(sp[0])
-	return lis
+		p = line.find(' ')
+		sp = line[:p], line[p:]
+		if sp[0] not in blacklist:
+			ret.append(sp)
+	return ret
+
 
 def run(modes):
-# Takes one argument, a dictionary of names of events to functions to be called when they occur.
+	# Takes one argument, a dictionary of names of events to functions to be called when they occur.
 	# Main loop --------
 	while True:
 		blacklist = []
 		try:
 			log.info("Initializing bluepy connection.")
-			p=None
+			p = None
 			while not p:
-				x=find_myo_mac(blacklist)
-				# print(x)
-				for mac in x:
+				x = find_mac(blacklist=blacklist)
+				#print(x)
+				for dev in x:
+					mac = dev[0]
 					try:
-						p = Connection( mac ) # Takes a long time if it's not a myo
+						log.info('Try to connect '+str(mac))
+						p = Connection(mac)  # Takes a long time if it's not a myo
 						if p:
+							log.info("Found Myo at MAC: %s" % mac)
 							break
+						else:
+							blacklist.append(mac)
 					except btle.BTLEException:
 						log.info("Found something that is not a Myo, adding to blacklist and trying again.")
 						log.debug("could not write to %s, ignored" % mac)
 						del p
-						p=None
+						p = None
 						blacklist.append(mac)
 						time.sleep(0.5)
-					else:
-						log.info("Found Myo at MAC: %s" % mac)
-			p.setDelegate( MyoDelegate(modes, p))
+
+			p.setDelegate(MyoDelegate(modes, p))
 
 			# Maybe try starting a new thread instead? *Might* work with multiple myos then.
 
 			log.info("Initialization complete.")
 			while True:
 				# break
-				try:    
+				try:
 					p.waitForNotifications(3)
 				except btle.BTLEException:
 					log.info("Disconnected")
