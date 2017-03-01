@@ -1,14 +1,16 @@
 from __future__ import print_function
 
-import logging as log
-import os
+import binascii
 import struct
-import subprocess
 import time
 
 from bluepy import btle
-#import btle
-import myo_dicts
+
+import myo_dicts as md
+from quaternion import Quaternion
+
+import logging
+
 
 # Author:
 #    Max Leefer
@@ -25,216 +27,385 @@ import myo_dicts
 # Mixes up fist and wave in when worn on left arm with led toward elbow
 
 
-PATH = os.getcwd()
+class MyoState:
+	def __init__(self, connector):
+		self.connection = connector
 
-busylog = False  # decides whether emg/imu notifications will generate log messages.
-log.basicConfig(filename=PATH + "/dongleless.log", filemode='w', level=log.INFO,
-				# change log.CRITICAL to log.DEBUG to get log messages
-				format='%(asctime)s %(levelname)-8s %(message)s', datefmt='%H:%M:%S')
+		self.arm = md.arm.UNKNOWN
+		self.pose = md.pose.REST
+		self.x_direction = md.x_direction.ELBOW
+		self.synced = False
+		self.startq = Quaternion(0, 0, 0, 1)
+		self.napq = Quaternion(0, 0, 0, 1)
+		self.imu = md.IMU()
+
+	@property
+	def otn(self):
+		if self.pose not in ["rest", "unknown"]:
+			return ~self.imu.quat * self.napq
+		else:
+			return self.imu.quat
+
+	def vibrate(self, length):
+		if length in range(1, 4):
+			self.connection.writeCharacteristic(0x19, struct.pack('<bbb', 0x03, 0x01, length), True)
+
+	def __str__(self):
+		if self.pose not in ["rest", "unknown"]:
+			a = ~self.imu.quat * self.napq
+			return str(self.pose) + " " + str(a.rpy)
+		else:
+			a = ~self.imu.quat * self.startq
+			return str(a.rpy)
 
 
 class Connection(btle.Peripheral):
 	def __init__(self, mac):
 		btle.Peripheral.__init__(self, mac)
 
-		# self.writeCharacteristic(0x19, struct.pack('<bbbbb', 0,0,0,3,1) ,True ) # Tell the myo we want neither IMU nor classifier data
-		# self.writeCharacteristic(0x24, struct.pack('<bb', 0x00, 0x00),True) # Unsubscribe from classifier indications
+		time.sleep(0.5)
 
-		# time.sleep(0.5)
+		# Subscribe to imu notifications
+		self.writeCharacteristic(md.handle.IMU.value + 1, b'\x01\x00', True)
+		# Subscribe to classifier indications
+		self.writeCharacteristic(md.handle.CLASSIFIER.value + 1, b'\x02\x00', True)
+		# Subscribe to emg notifications
+		# self.writeCharacteristic(md.handle.EMG.value+1, b'\x01\x00', True)
+		self.set_mode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
 
-		self.writeCharacteristic(0x24, struct.pack('<bb', 0x02, 0x00), True)  # Subscribe to classifier indications
-		self.writeCharacteristic(0x1d, struct.pack('<bb', 0x01, 0x00), True)  # Subscribe to imu notifications
-		self.writeCharacteristic(0x28, struct.pack('<bb', 0x01, 0x00), True)  # Subscribe to emg notifications
-		self.writeCharacteristic(0x19, struct.pack('<bbbbb', 1, 1, 1, 3, 1), True)  # Tell the myo we want all the data
+		self.fw = self.readCharacteristic(0x17)
+		# print('firmware version: %d.%d.%d.%d' % struct.unpack('4h', fw))
 
-	def vibrate(self, length):
-		self.writeCharacteristic(0x19, struct.pack('<bbb', 0x03, 0x01, length), True)
+		self.name = self.readCharacteristic(0x03).decode("utf-8")
+		# print('device name: %s' % name)
+
+		# self.start_raw()
+		# info = self.info()
+
+		# self.mc_end_collection()
+		self.resync()
+
+	def battery(self):
+		return ord(self.readCharacteristic(17))
+
+	def resync(self):
+		# self.writeCharacteristic(0x28, b'\x01\x00', True)
+		self.set_mode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.OFF)
+		self.set_mode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
+
+	def cmd(self, c, p):
+		l = len(p)
+		cmd = md.command(bytearray([c, l]) + bytearray([chr(i) for i in p]))
+		self.writeCharacteristic(0x19, cmd.data(), True)
+
+	def sleep_mode(self, state):
+		self.cmd(9, [state])
+
+	def set_mode(self, emg, imu, classifier):
+		self.cmd(1, [emg, imu, classifier])
+
+	def mc_start_collection(self):
+		"""
+		Myo Connect sends this sequence (or a reordering) when starting data
+		collection for v1.0 firmware;
+		this enables raw data but disables arm and pose notifications.
+		:return: None
+		"""
+
+		self.writeCharacteristic(0x28, b'\x01\x00', True)
+		self.writeCharacteristic(0x1d, b'\x01\x00', True)
+
+		self.writeCharacteristic(0x24, b'\x02\x00', True)
+		self.set_mode(md.emg_mode.ON, md.imu_mode.DATA, md.classifier_mode.ON)
+		# self.set_mode(1, 1, 1)
+
+		self.writeCharacteristic(0x28, b'\x01\x00', True)
+		self.writeCharacteristic(0x1d, b'\x01\x00', True)
+
+		self.sleep_mode(True)
+		self.writeCharacteristic(0x1d, b'\x01\x00', True)
+		self.set_mode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.OFF)
+
+		self.writeCharacteristic(0x28, b'\x01\x00', True)
+		self.writeCharacteristic(0x1d, b'\x01\x00', True)
+		self.set_mode(md.emg_mode.ON, md.imu_mode.DATA, md.classifier_mode.OFF)
+
+	def mc_end_collection(self):
+		"""Myo Connect sends this sequence (or a reordering) when ending data collection
+		for v1.0 firmware; this reenables arm and pose notifications, but
+		doesn't disable raw data.
+		:return: None
+		"""
+
+		self.writeCharacteristic(0x28, b'\x01\x00')
+		self.writeCharacteristic(0x1d, b'\x01\x00')
+
+		self.writeCharacteristic(0x24, b'\x02\x00')
+		self.set_mode(md.emg_mode.ON, md.imu_mode.DATA, md.classifier_mode.ON)
+		self.sleep_mode(False)
+		self.writeCharacteristic(0x1d, b'\x01\x00')
+		self.writeCharacteristic(0x24, b'\x02\x00')
+		self.set_mode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
+
+		self.writeCharacteristic(0x28, b'\x01\x00')
+		self.writeCharacteristic(0x1d, b'\x01\x00')
+
+		self.writeCharacteristic(0x24, b'\x02\x00')
+		self.set_mode(md.emg_mode.ON, md.imu_mode.DATA, md.classifier_mode.ON)
+
+	def info(self):
+		out = dict()
+
+		services = self.getServices()
+
+		for i in services:
+			s = binascii.b2a_hex(i.uuid.binVal).decode('utf-8')[4:8]
+			num = int(s, base=16)
+			sname = md.services.get(num, s)
+
+			if sname in ('1801', '0004', '0006'):  # unknown
+				continue
+
+			print(str(sname))
+
+			ch = i.getCharacteristics()
+
+			dat = dict()
+
+			for c in ch:
+				s = binascii.b2a_hex(c.uuid.binVal).decode('utf-8')[4:8]
+				num = int(s, base=16)
+				name = md.services.get(num, hex(num))
+				if 'EmgData' in name:
+					logging.info('\t%s' % (name))
+					dat.update({name: ''})
+					continue
+				if name in ('0x602', '0x104', 'Command', '0x2a05'):
+					logging.info('\t%s' % (name))
+					dat.update({name: ''})
+					continue
+
+				if c.supportsRead():
+					b = bytearray(c.read())
+					try:
+						if name in ('Info1', 'Info2'):
+							b = list(b)
+							logging.info('\t%s: %s' % (name, b))
+							dat.update({name: b})
+							continue
+						elif name == 'FirmwareVersion':
+							b = md.firmware(b)
+							logging.info('\t%s: %s' % (name, b))
+							dat.update({name: b})
+							continue
+						elif name == 'HardwareInfo':
+							b = md.hardwareInfo(b)
+							logging.info('\t%s: %s' % (name, b))
+							dat.update({name: b})
+							continue
+						elif name == 'BatteryLevel':
+							b = b[0]
+							logging.info('\t%s: %s' % (name, b))
+							dat.update({name: int(b)})
+							continue
+						else:
+							logging.info('\t%s: %s' % (name, b))
+							dat.update({name: str(b)})
+					except Exception as e:
+						logging.info('\t%s: %s' % (name, list(b)))
+						dat.update({name: list(b)})
+				else:
+					try:
+						b = bytearray(c.read())
+						if name in ('0x104', 'ClassifierEvent'):
+							b = list(b)
+							logging.info('\t%s: %s' % (name, b))
+							dat.update({name: b})
+							continue
+						if name == 'IMUData':
+							b = md.IMU(b)
+							logging.info('\t%s: %s' % (name, b))
+							dat.update({name: b})
+							continue
+						if name == 'MotionEvent':
+							b = md.motionEvent(b)
+							logging.info('\t%s: %s' % (name, b))
+							dat.update({name: b})
+							continue
+						if name == 'Command':
+							b = md.command(b)
+							logging.info('\t%s: %s' % (name, b))
+							dat.update({name: b})
+							continue
+
+						logging.info('\t%s: %s' % (name, b))
+						dat.update({name: list(b)})
+					except:
+						logging.info('\t%s: %s' % (name, c.props))
+						dat.update({name: c})
+
+			out.update({sname: dat})
+		return out
 
 
-class MyoDelegate(btle.DefaultDelegate):
-	def __init__(self, bindings, myo):
-		self.bindings = bindings
-		self.myo = myo
+class MyoDevice(btle.DefaultDelegate):
+	def __init__(self, mac=None):
+		btle.DefaultDelegate.__init__(self)
+		self.connection = Connection(mac=getMyo(mac))
+
+		self.connection.setDelegate(self)
+
+		self.myo = MyoState(self.connection)
+		self.myo.vibrate(1)
 
 	def handleNotification(self, cHandle, data):
-		if cHandle == 0x23:
-			log.debug("got pose notification")
-			ev_type = None
-			data = struct.unpack('>6b',
-								 data)  # sometimes gets the poses mixed up, if this happens, try wearing it in a different orientation.
-			if data[0] == 3:  # CLassifier
-				ev_type = myo_dicts.pose[data[1]]
-				# print(ev_type)
-				if data[1] != 0:
-					self.myo.writeCharacteristic(0x19, struct.pack('<bbb', 0x03, 0x01, 0x01), True)
+		try:
+			handle = md.handle(cHandle)
+		except:
+			raise Exception('Unknown data handle +' % str(cHandle))
+
+		if handle == handle.CLASSIFIER:  # Classifier
+			# sometimes gets the poses mixed up, if this happens, try wearing it in a different orientation.
+			data = struct.unpack('>6b', data)
+			try:
+				ev_type = md.classifierEvent(data[0])
+			except:
+				raise Exception('Unknown classifier event: ' + str(data[0]))
+			if ev_type == ev_type.POSE:
+				self.myo.pose = md.pose(data[1])
+				if self.myo.pose == md.pose.UNSYNC:  # unsync
+					self.myo.synced = False
+					self.myo.arm = md.arm(-1)
+					self.myo.x_direction = md.x_direction(-1)
+					self.myo.startq = Quaternion(0, 0, 0, 1)
+					return
+				else:
+					self.myo.napq = self.myo.imu.quat.copy()
+					self.on_pose(self.myo)
 
 			else:
-				if data[0] == 1:  # sync
-					log.info("Arm synced")
-					ev_type = "arm_synced"
-					# rewrite handles
-					self.myo.writeCharacteristic(0x19, struct.pack('<bbbbb', 1, 1, 0, 3, 1),
-												 True)  # Tell the myo we want IMU and classifier data
-					self.myo.writeCharacteristic(0x24, struct.pack('<bb', 0x02, 0x00),
-												 True)  # Subscribe to classifier indications
-					self.myo.writeCharacteristic(0x28, struct.pack('<bb', 0x00, 0x00),
-												 True)  # Subscribe to classifier indications
-					self.myo.writeCharacteristic(0x1d, struct.pack('<bb', 0x01, 0x00),
-												 True)  # Subscribe to classifier indications
-					# self.myo.writeCharacteristic(0x1d, struct.pack('<bb', 0x01, 0x00),True) # Subscribe to IMU notifications
+				if ev_type == ev_type.SYNC:
+					self.myo.synced = True
 
-					if data[1] == 2:  # left arm
-						self.arm = "left"
-					elif data[1] == 1:  # right arm
-						self.arm = "right"
-					else:
-						self.arm = "unknown"
-					if 'arm_synced' in self.bindings:
-						self.bindings['arm_synced'](self.myo, myo_dicts.x_direction[data[2]], myo_dicts.arm[data[1]])
+					# rewrite handles
+					self.myo.arm = md.arm(data[1])
+					self.myo.x_direction = md.x_direction(data[2])
+					self.myo.startq = self.myo.imu.quat.copy()
+
+					self.on_sync(self.myo)
 					return
 
-			if ev_type in self.bindings:
-				self.bindings[ev_type](self.myo)
+				elif ev_type == ev_type.UNSYNC:
+					self.myo.synced = False
+					self.myo.arm = md.arm(data[1])
+					self.myo.x_direction = md.x_direction(data[2])
+					self.myo.pose = md.pose(0)
+					self.myo.startq = Quaternion(0, 0, 0, 1)
 
-		elif cHandle == 0x1c:  # IMU
-			data = struct.unpack('<10h', data)
-			quat = data[:4]
-			accel = data[4:7]
-			gyro = data[7:]
-			if busylog:
-				log.debug("got imu notification")
-			ev_type = "imu_data"
-			if "imu_data" in self.bindings:
-				self.bindings["imu_data"](self.myo, quat, accel, gyro)
+					self.on_unsync(self.myo)
+					return
 
-		elif cHandle == 0x27:  # EMG
-			data = struct.unpack('<8HB', data)  # an extra byte for some reason
-			if busylog:
-				log.debug("got emg notification")
-			ev_type = "emg_data"
-			if "emg_data" in self.bindings:
-				self.bindings["emg_data"](self.myo, data[:8])
+				elif ev_type == ev_type.UNLOCK:
+					self.on_unlock(self.myo)
 
+				elif ev_type == ev_type.LOCK:
+					self.on_lock(self.myo)
 
-# def quat_to_euler(w,x,y,z):
-# 	# Calculate Euler angles (roll, pitch, and yaw) from the unit quaternion.
-# 	w,x,y,z = [a/16384 for a in [w,x,y,z]]
-# 	roll = math.atan2(2.0 * (w * x + y * z),
-# 					   1.0 - 2.0 * (x * x + y * y))
-# 	pitch = math.asin(max(-1.0, min(1.0, 2.0 * (w * y - z * x))))
-# 	yaw = math.atan2(2.0 * (w * z + x * y),
-# 					1.0 - 2.0 * (y * y + z * z))
-# 	# // Convert the floating point angles in radians to a scale from 0 to 18.
+				elif ev_type == ev_type.SYNCFAIL:
+					self.myo.synced = False
+					self.on_sync_failed(self.myo)
+
+				elif ev_type == ev_type.WARMUP:
+					self.on_warmup(self.myo)
 
 
-# 	result = ((roll + (math.pi))/(math.pi * 2.0) * 18, # roll
-# 			(pitch + (math.pi/2.0)/math.pi * 18),      # pitch
-# 			(yaw + (math.pi)/(math.pi * 2.0) * 18) )   # yaw
+		elif handle == handle.IMU:  # IMU
+			self.myo.imu = md.IMU(data)
+			self.on_imu(self.myo)
 
+		elif handle == handle.EMG:  # EMG
+			self.myo.emg = md.EMG(data)
+			self.on_emg(self.myo)
 
-# 	# print ("in: {} out: {}".format((w,x,y,z), result)),
-# 	return result
-# 	# print(max(-1.0, min(1.0, 2.0 * (w * y - z * x))))
+		else:
+			logging.error("Unknown data handle %s" % cHandle)
 
+	def run(self):
+		while 1:
+			self.connection.waitForNotifications(3)
 
-def print_wrapper(*args):
-	print(args)
+	def on_imu(self, myo):
+		pass
+
+	def on_emg(self, myo):
+		pass
+
+	def on_pose(self, myo):
+		logging.info(myo.pose)
+
+	def on_sync(self, myo):
+		logging.info("Arm synced")
+
+	def on_unsync(self, myo):
+		self.connection.writeCharacteristic(0x24, b'\x01\x00', True)
+		self.connection.resync()
+		logging.info("Arm unsynced")
+
+	def on_lock(self, myo):
+		logging.info('Lock')
+
+	def on_unlock(self, myo):
+		logging.info('Unlock')
+
+	def on_sync_failed(self, myo):
+		logging.info('Sync failed')
+
+	def on_warmup(self, myo):
+		logging.info('Warmup complite')
 
 
 # take a list of the events.
 events = ("rest", "fist", "wave_in", "wave_out", "wave_left", "wave_right",
-		  "fingers_spread", "double_tap", "unknown", "arm_synced", "arm_unsynced",
-		  "orientation_data", "gyroscope_data", "accelerometer_data", "imu_data", "emg_data")
+          "fingers_spread", "double_tap", "unknown", "arm_synced", "arm_unsynced",
+          "orientation_data", "gyroscope_data", "accelerometer_data", "imu_data", "emg_data")
 
 
-# Bluepy is more suited to getting default values like heartrate and such, it's not great at fetching by uuid.
+def getMyo(mac=None):
+	cnt = 0
 
-def find_mac(blacklist=list(), password=None, timeout=3, passive=False, root=True):
-	c = str()
+	if mac != None:
+		while True:
+			for i in btle.Scanner(0).scan(1):
+				if i.addr == mac:
+					return str(mac).upper()
+			cnt += 1
+			logging.info('Try #' + str(cnt))
 
-	if root:
-		sudo = 'sudo '
-		if password is not None:
-			c += 'echo ' + str(password) + ' | '
-			sudo += '-S '
-	else:
-		sudo = ''
-
-	if timeout is not None:
-		c += sudo + 'timeout -s SIGINT -k 0 ' + str(timeout) + ' '
-
-	c += sudo + 'hcitool lescan' + (' --passive' if passive else '')
-
-	if password is not None and root:
-		process = subprocess.Popen(c, stdout=subprocess.PIPE,
-								   stderr=subprocess.PIPE,
-								   stdin=subprocess.PIPE,
-								   shell=True)
-	else:
-		process = subprocess.Popen(c, stdout=subprocess.PIPE, shell=True)
-	output, unused_err = process.communicate()
-
-	retcode = process.poll()
-	if retcode != 124:
-		raise subprocess.CalledProcessError(retcode, c, output=output)
-
-	lines = output.strip().split('\n')
-	# timing is a bit weird.
-
-	lines = lines[1:]
-	ret = list()
-	for line in lines:
-		p = line.find(' ')
-		sp = line[:p], line[p:]
-		if sp[0] not in blacklist:
-			ret.append(sp)
-	return ret
-
-
-def run(modes):
-	# Takes one argument, a dictionary of names of events to functions to be called when they occur.
-	# Main loop --------
 	while True:
-		blacklist = []
+		for i in btle.Scanner(0).scan(1):
+			for j in i.getScanData():
+				if j[0] == 6 and j[2] == '4248124a7f2c4847b9de04a9010006d5':
+					return str(i.addr).upper()
+		logging.info('Try #' + str(cnt))
+
+
+def run():
+	while True:
 		try:
-			log.info("Initializing bluepy connection.")
-			p = None
-			while not p:
-				x = find_mac(blacklist=blacklist)
-				#print(x)
-				for dev in x:
-					mac = dev[0]
-					try:
-						log.info('Try to connect '+str(mac))
-						p = Connection(mac)  # Takes a long time if it's not a myo
-						if p:
-							log.info("Found Myo at MAC: %s" % mac)
-							break
-						else:
-							blacklist.append(mac)
-					except btle.BTLEException:
-						log.info("Found something that is not a Myo, adding to blacklist and trying again.")
-						log.debug("could not write to %s, ignored" % mac)
-						del p
-						p = None
-						blacklist.append(mac)
-						time.sleep(0.5)
-
-			p.setDelegate(MyoDelegate(modes, p))
-
-			# Maybe try starting a new thread instead? *Might* work with multiple myos then.
-
-			log.info("Initialization complete.")
+			logging.info("Initializing bluepy connection")
+			myo = MyoDevice()
+			logging.info("Initialization complete.")
 			while True:
-				# break
 				try:
-					p.waitForNotifications(3)
-				except btle.BTLEException:
-					log.info("Disconnected")
-					break
+					myo.run()
+				except btle.BTLEException as e:
+					logging.info(str(e))
+					logging.info("Disconnected")
 		except KeyboardInterrupt:
-			log.warning("KeyboardInterrupt")
+			logging.debug("KeyboardInterrupt")
 			break
-		# except:
-		#     log.critical("Unexpected error:", sys.exc_info()[0])
-	log.warning("Program stopped")
+
+
+if __name__ == '__main__':
+	run()
+

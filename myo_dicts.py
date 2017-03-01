@@ -1,123 +1,319 @@
-#typedef enum \{([^{]+?)\} myohw_(\w+)
-#$2 : \{ $1 \}
+import struct
+
+from enum import Enum
+
+from quaternion import Quaternion
+from vector import Vector
 
 
-### See myohw.h for more complete instructions on command structure, formats, etc.
- 
+class Enum(Enum):
+	def __int__(self):
+		return self.value
 
-services = {  #*********************chse - characteristic, service
-    0x0001: "ControlService"                , #< Myo info service
-    0x0101: "MyoInfoCharacteristic"         , #< Serial number for this Myo and various parameters which
-                                            #< are specific to this firmware. Read-only attribute. 
-                                            #< See myohw_fw_info_t.
-    0x0201: "FirmwareVersionCharacteristic" , #< Current firmware version. Read-only characteristic.
-                                            #< See myohw_fw_version_t.
-    0x0401: "CommandCharacteristic"         , #< Issue commands to the Myo. Write-only characteristic.
-                                            #< See myohw_command_t.
+	def __float__(self):
+		return self.value
 
-    0x0002: "ImuDataService"                , #< IMU service
-    0x0402: "IMUDataCharacteristic"         , #< See myohw_imu_data_t. Notify-only characteristic. /*
-    0x0a02: "MotionEventCharacteristic"     , #< Motion event data. Indicate-only characteristic. /*
 
-    0x0003: "ClassifierService"             , #< Classifier event service.
-    0x0103: "ClassifierEventCharacteristic" , #< Classifier event data. Indicate-only characteristic. See myohw_pose_t. /***
+services = {
+	0x1800: "InfoService",
+	0x2a00: "Name",
+	0x2a01: "Info1",
+	0x2a04: "Info2",
 
-    0x0005: "EmgDataService"                , #< Raw EMG data service.
-    0x0105: "EmgData Characteristic"        , #< Raw EMG data. Notify-only characteristic.
-    0x0205: "EmgData Characteristic"        , #< Raw EMG data. Notify-only characteristic.
-    0x0305: "EmgData Characteristic"        , #< Raw EMG data. Notify-only characteristic.
-    0x0405: "EmgData Characteristic"        , #< Raw EMG data. Notify-only characteristic.
- }
-pose = { 
-    0x0000: "rest"           ,
-    0x0001: "fist"           ,
-    0x0002: "wave_in"        ,
-    0x0003: "wave_out"       ,
-    0x0004: "fingers_spread" ,
-    0x0005: "double_tap"     ,
-    0xffff: "unknown"        ,
-    -1    : "unknown"        
- }
-sku = { 
-    0: "sku_unknown"   , #< Unknown SKU (default value for old firmwares)
-    1: "sku_black_myo" , #< Black Myo
-    2: "sku_white_myo"   #< White Myo
- }
-hardware_rev = { 
-    0: "hardware_rev_unknown" , #< Unknown hardware revision.
-    1: "hardware_rev_revc"    , #< Myo Alpha (REV-C) hardware.
-    2: "hardware_rev_revd"    , #< Myo (REV-D) hardware.
+	0x180f: "BatteryService",
+	0x2a19: "BatteryLevel",
+
+	0x0001: "ControlService",  # < Myo info service
+	0x0101: "HardwareInfo",  # < Serial number for this Myo and various parameters which
+	# < are specific to this firmware. Read-only attribute.
+	# < See myohw_fw_info_t.
+	0x0201: "FirmwareVersion",  # < Current firmware version. Read-only characteristic.
+	# < See myohw_fw_version_t.
+	0x0401: "Command",  # < Issue commands to the Myo. Write-only characteristic.
+	# < See myohw_command_t.
+
+	0x0002: "ImuDataService",  # < IMU service
+	0x0402: "IMUData",  # < See myohw_imu_data_t. Notify-only characteristic. /*
+	0x0502: "MotionEvent",  # < Motion event data. Indicate-only characteristic. /*
+
+	0x0003: "ClassifierService",  # < Classifier event service.
+	0x0103: "ClassifierEvent",  # < Classifier event data. Indicate-only characteristic. See myohw_pose_t. /***
+
+	0x0005: "EmgDataService",  # < Raw EMG data service.
+	0x0105: "EmgData1",  # < Raw EMG data. Notify-only characteristic.
+	0x0205: "EmgData2",  # < Raw EMG data. Notify-only characteristic.
+	0x0305: "EmgData3",  # < Raw EMG data. Notify-only characteristic.
+	0x0405: "EmgData4",  # < Raw EMG data. Notify-only characteristic.
+
+	0x180a: "CompanyService",
+	0x2a29: "CompanyName"
 }
-command = { 
-    0x01: "command_set_mode"               , #< Set EMG and IMU modes. See myohw_command_set_mode_t.
-    0x03: "command_vibrate"                , #< Vibrate. See myohw_command_vibrate_t.
-    0x04: "command_deep_sleep"             , #< Put Myo into deep sleep. See myohw_command_deep_sleep_t.
-    0x07: "command_vibrate2"               , #< Extended vibrate. See myohw_command_vibrate2_t.
-    0x09: "command_set_sleep_mode"         , #< Set sleep mode. See myohw_command_set_sleep_mode_t.
-    0x0a: "command_unlock"                 , #< Unlock Myo. See myohw_command_unlock_t.
-    0x0b: "command_user_action"            , #< Notify user that an action has been recognized / confirmed.
-                                                 #< See myohw_command_user_action_t.
- }
-emg_mode = { 
-    0x00: "emg_mode_none"         , #< Do not send EMG data.
-    0x02: "emg_mode_send_emg"     , #< Send filtered EMG data.
-    0x03: "emg_mode_send_emg_raw" , #< Send raw (unfiltered) EMG data.
- }
-imu_mode = { 
-    0x00: "imu_mode_none"        , #< Do not send IMU data or events.
-    0x01: "imu_mode_send_data"   , #< Send IMU data streams (accelerometer, gyroscope, and orientation).
-    0x02: "imu_mode_send_events" , #< Send motion events detected by the IMU (e.g. taps).
-    0x03: "imu_mode_send_all"    , #< Send both IMU data streams and motion events.
-    0x04: "imu_mode_send_raw"    , #< Send raw IMU data streams.
- }
-classifier_mode = { 
-    0x00: "classifier_mode_disabled" , #< Disable and reset the internal state of the onboard classifier.
-    0x01: "classifier_mode_enabled"  , #< Send classifier events (poses and arm events).
- }
-vibration_type = { 
-    0x00: "none"   , #< Do not vibrate.
-    0x01: "short"  , #< Vibrate for a short amount of time.
-    0x02: "medium" , #< Vibrate for a medium amount of time.
-    0x03: "long"   , #< Vibrate for a long amount of time.
- }
-sleep_mode = { 
-    0: "sleep_mode_normal"      , #< Normal sleep mode; Myo will sleep after a period of inactivity.
-    1: "sleep_mode_never_sleep" , #< Never go to sleep.
- }
-unlockype = { 
-    0x00: "unlock_lock"  , #< Re-lock immediately.
-    0x01: "unlock_timed" , #< Unlock now and re-lock after a fixed timeout.
-    0x02: "unlock_hold"  , #< Unlock now and remain unlocked until a lock command is received.
- }
-user_action_type = { 
-    0: "user_action_single" , #< User did a single, discrete action, such as pausing a video.
- }
-classifier_model_type = { 
-    0: "classifier_model_builtin" , #< Model built into the classifier package.
-    1: "classifier_model_custom"    #< Model based on personalized user data.
- }
-motion_event_type = { 
-    0x00: "motion_event_tap" ,
- }
-classifier_event_type = { 
-    0x01: "arm_synced"   ,
-    0x02: "arm_unsynced" ,
-    0x03: "pose"         ,
-    0x04: "unlocked"     ,
-    0x05: "locked"       ,
-    0x06: "sync_failed"  ,
-    0x07: "warmup_complete"
- }
-arm = { 
-    0x01: "arm_right"   ,
-    0x02: "arm_left"    ,
-    0xff: "arm_unknown" 
- }
-x_direction = { 
-    0x01: "x_direction_toward_wrist" ,
-    0x02: "x_direction_toward_elbow" ,
-    0xff: "x_direction_unknown"      
- }
-sync_result = { 
-    0x01: "sync_failed_too_hard" , #< Sync gesture was performed too hard.
- }
+
+
+class handle(Enum):
+	IMU = 0x1C
+	EMG = 0x27
+	CLASSIFIER = 0x23
+
+
+class pose(Enum):
+	REST = 0
+	FIST = 1
+	IN = 2
+	OUT = 3
+	SPREAD = 4
+	TAP = 5
+	UNSYNC = -1
+
+
+class sku(Enum):
+	BLACK = 1
+	WHITE = 2
+	UNKNOWN = 0
+
+
+class hardware_rev(Enum):
+	C = 1
+	D = 2
+
+
+class setMode:
+	def __init__(self, data):
+		self.emg = emg_mode(data[0])
+		self.imu = imu_mode(data[1])
+		self.classifier = classifier_mode(data[2])
+
+	@property
+	def value(self):
+		return self.emg.value, self.imu.value, self.classifier.value
+
+
+class deep_sleep:
+	value = list()
+
+
+class emg_mode(Enum):
+	OFF = 0x00
+	ON = 0x02
+	RAW = 0x03
+
+
+class imu_mode(Enum):
+	OFF = 0x00
+	DATA = 0x01
+	EVENTS = 0x02
+	ALL = 0x03
+	RAW = 0x04
+
+
+class classifier_mode(Enum):
+	OFF = 0x00
+	ON = 0x01
+
+
+class vibration_type:
+	def __init__(self, data):
+		self.duration = data
+
+	@property
+	def value(self):
+		return list(self.duration)
+
+
+class vibration2_type:
+	def __init__(self, data):
+		self.duration = data[0]
+		self.strength = data[1]
+
+	@property
+	def value(self):
+		return self.duration, self.strength
+
+
+class sleep_mode(Enum):
+	NORMAL = 0
+	NEVER = 1
+
+
+class unlock_type(Enum):
+	LOCK = 0
+	TIMED = 1
+	HOLD = 2
+
+
+class user_action_type(Enum):
+	SINGLE = 0
+
+
+class command:
+	SET_MODE = 1
+	VIBRATION = 3
+	DEEP_SLEEP = 4
+	VIBRATION2 = 7
+	SLEEP_MODE = 9
+	UNLOCK = 0x0A
+	USER_ACTION = 0x0B
+
+	def __init__(self, data):
+		base = {
+			0x01: setMode,  # < Set EMG and IMU modes. See myohw_command_set_mode_t.
+			0x03: vibration_type,  # < Vibrate. See myohw_command_vibrate_t.
+			0x04: deep_sleep,  # < Put Myo into deep sleep. See myohw_command_deep_sleep_t.
+			0x07: vibration2_type,  # < Extended vibrate. See myohw_command_vibrate2_t.
+			0x09: sleep_mode,  # < Set sleep mode. See myohw_command_set_sleep_mode_t.
+			0x0a: unlock_type,  # < Unlock Myo. See myohw_command_unlock_t.
+			0x0b: user_action_type,  # < Notify user that an action has been recognized / confirmed.
+		}
+		self.cmd = data[0]
+		self.size = data[1]
+		self.pay = base[self.cmd](data[2:2 + self.size])
+
+	def data(self):
+		pay = bytearray([chr(i) for i in self.pay.value])
+		return bytearray([chr(self.cmd), chr(len(pay))]) + pay
+
+	def __str__(self):
+		return str(type(self.pay).__name__) + ': ' + str(self.pay)
+
+
+class classifier_model_type(Enum):
+	BUILTIN = 0
+	CUSTOM = 1
+
+
+class motion_event_type(Enum):
+	TAP = 0
+
+
+class motionEvent():
+	def __init__(self, data):
+		data = struct.unpack('3b', data)
+		self.type = motion_event_type(data[0])
+		self.dir = data[1]
+		self.count = data[2]
+
+	def __str__(self):
+		return str(self.type) + ' to ' + str(self.dir) + ' x' + str(self.count)
+
+
+class IMU:
+	class Scale(Enum):
+		ORIENTATION = 16384.
+		ACCELEROMETER = 2048.
+		GYROSCOPE = 16.
+
+	def __init__(self, data=None):
+		if data is not None:
+			data = struct.unpack('<hhhhhhhhhh', data)
+			self.accel = Vector(*[i / float(self.Scale.ACCELEROMETER) for i in data[4:7]])
+			self.gyro = Vector(*[i / float(self.Scale.GYROSCOPE) for i in data[7:]])
+			self.quat = Quaternion([i / float(self.Scale.ORIENTATION) for i in data[:4]])
+		else:
+			self.accel = Vector()
+			self.gyro = Vector()
+			self.quat = Quaternion()
+
+	def __str__(self):
+		return str(self.quat)
+
+
+class EMG:
+	def __init__(self, data):
+		data = struct.unpack('<8HB', data)  # an extra byte for some reason
+		self.sample1 = data[:8]
+		self.sample2 = data[9:]
+
+
+class classifierEvent(Enum):
+	SYNC = 1
+	UNSYNC = 2
+	POSE = 3
+	UNLOCK = 4
+	LOCK = 5
+	SYNCFAIL = 6
+	WARMUP = 7
+
+
+class arm(Enum):
+	UNKNOWN = 0
+	RIGHT = 1
+	LEFT = 2
+	UNSYNC = -1
+
+
+class x_direction(Enum):
+	UNKNOWN = 0
+	WRIST = 1
+	ELBOW = 2
+	UNSYNC = -1
+
+
+class sync_result(Enum):
+	SYNC_FAILED_TOO_HARD = 1
+
+
+class firmware:
+	def __init__(self, data):
+		data = struct.unpack('4h', data)
+		self.major = data[0]
+		self.minor = data[1]
+		self.patch = data[2]
+		self.hardware_rev = hardware_rev(data[3])
+
+	def __str__(self):
+		s = str()
+		s += str(self.major) + '.'
+		s += str(self.minor) + '.'
+		s += str(self.patch) + '.'
+		s += str(self.hardware_rev.name)
+		return s
+
+
+class hardwareInfo:
+	def __init__(self, data):
+		data = list(data)
+
+		ser = list(data[:6])
+		ser.reverse()
+		ser = [hex(i)[-2:] for i in ser]
+		self.serial_number = ':'.join(ser).upper()
+
+		self.unlock_pose = pose(data[6])
+		self.active_classifier_type = data[7]
+		self.active_classifier_index = data[8]
+		self.has_custom_classifier = data[9]
+		self.stream_indicating = data[10]
+		self.sku = sku(data[11])
+
+	def __str__(self):
+		return str(self.serial_number)
+
+
+class Character:
+	name = None
+
+	def __init__(self, uuid):
+		uuds = [i.value for i in UUID]
+		if uuid in uuds:
+			self.name = UUID(uuid).name
+		self.uuid = uuid
+
+
+class UUID(Enum):
+	GAP_SERVICE = "00001800-0000-1000-8000-00805f9b34fb"
+	DEVICE_NAME = "00002a00-0000-1000-8000-00805f9b34fb"
+	CONTROL_SERVICE = "d5060001-a904-deb9-4748-2c7f4a124842"
+	FIRMWARE_INFO = "d5060101-a904-deb9-4748-2c7f4a124842"
+	FIRMWARE_VERSION = "d5060201-a904-deb9-4748-2c7f4a124842"
+	COMMAND = "d5060401-a904-deb9-4748-2c7f4a124842"
+	IMU_SERVICE = "d5060002-a904-deb9-4748-2c7f4a124842"
+	IMU_DATA = "d5060402-a904-deb9-4748-2c7f4a124842"
+	CLASSIFIER_SERVICE = "d5060003-a904-deb9-4748-2c7f4a124842"
+	CLASSIFIER_EVENT = "d5060103-a904-deb9-4748-2c7f4a124842"
+	FV_SERVICE = "d5060004-a904-deb9-4748-2c7f4a124842"
+	FV_DATA = "d5060104-a904-deb9-4748-2c7f4a124842"
+	EMG_SERVICE = "d5060005-a904-deb9-4748-2c7f4a124842"
+	EMG0_DATA = "d5060105-a904-deb9-4748-2c7f4a124842"
+	EMG1_DATA = "d5060205-a904-deb9-4748-2c7f4a124842"
+	EMG2_DATA = "d5060305-a904-deb9-4748-2c7f4a124842"
+	EMG3_DATA = "d5060405-a904-deb9-4748-2c7f4a124842"
