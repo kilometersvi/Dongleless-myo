@@ -118,9 +118,9 @@ class SetMode(cmd):
 
 class emg_mode(Enum):
 	OFF = 0x00
-	DATA = 0x01  # ?
-	ON = 0x02
-	RAW = 0x03
+	ON = 0x01
+	SEND = 0x02
+	SEND_RAW = 0x03
 
 
 class imu_mode(Enum):

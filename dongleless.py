@@ -10,7 +10,6 @@ from bluepy import btle
 import myo_dicts as md
 from quaternion import Quaternion
 
-
 # Author:
 #    Max Leefer
 # Contributor:
@@ -26,6 +25,7 @@ from quaternion import Quaternion
 # Mixes up fist and wave in when worn on left arm with led toward elbow
 
 logging.basicConfig(filename='myo.log', level=logging.DEBUG)
+
 
 class MyoState:
 	def __init__(self, connector):
@@ -62,13 +62,6 @@ class Connection(btle.Peripheral):
 
 		time.sleep(0.5)
 
-		# Subscribe to imu notifications
-		self.writeCharacteristic(md.handle.IMU.value + 1, b'\x01\x00', True)
-		# Subscribe to classifier indications
-		self.writeCharacteristic(md.handle.CLASSIFIER.value + 1, b'\x02\x00', True)
-		# Subscribe to emg notifications
-		self.writeCharacteristic(md.handle.EMG.value+1, b'\x01\x00', True)
-
 		self.setMode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
 
 		self.firmware = md.firmware(self.readCharacteristic(0x17))
@@ -79,7 +72,16 @@ class Connection(btle.Peripheral):
 
 		# self.start_raw()
 		# info = self.info()
+		self.cmd(md.SleepMode().never())
+
+		self.subscribe()
+
 		self.resync()
+
+	def subscribe(self):
+		self.writeCharacteristic(md.handle.IMU.value + 1, b'\x01\x00', True)  # Subscribe to imu notifications
+		self.writeCharacteristic(md.handle.CLASSIFIER.value + 1, b'\x02\x00', True)  # Subscribe to classifier
+		self.writeCharacteristic(md.handle.EMG.value + 1, b'\x01\x00', True)  # Subscribe to emg notifications
 
 	def battery(self):
 		return ord(self.readCharacteristic(0x11))
@@ -92,14 +94,32 @@ class Connection(btle.Peripheral):
 	def cmd(self, pay):
 		self.writeCharacteristic(0x19, pay.data, True)
 
-	def sleepMode(self, state):
-		self.cmd(md.SleepMode(state))
-
 	def setMode(self, emg, imu, classifier):
 		self.cmd(md.SetMode(emg, imu, classifier))
 
 	def emg_mode(self, state=True):
-		self.setMode(1 if state else 0, 1, 0 if state else 1)  # Enable EMG and IMU data, disable pose classifier
+		if not state:
+			self.setMode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
+		else:
+			self.setMode(md.emg_mode.ON, md.imu_mode.DATA, md.classifier_mode.OFF)
+
+	def vibrate(self, length, strength=None):
+		self.cmd(md.Vibration(length, strength))
+
+	def setLeds(self, *args):
+		"""[logoR, logoG, logoB], [lineR, lineG, lineB] or
+		[logoR, logoG, logoB, lineR, lineG, lineB]"""
+
+		if len(args) == 1:
+			args = args[0]
+
+		if len(args) == 2:
+			pay = md.Led(args[0], args[1])
+		elif len(args) == 6:
+			pay = md.Led(args[0:3], args[3:6])
+		else:
+			raise Exception('Unknown data')
+		self.writeCharacteristic(0x19, pay.data, True)
 
 	def info(self):
 		out = dict()
@@ -189,24 +209,6 @@ class Connection(btle.Peripheral):
 
 			out.update({sname: dat})
 		return out
-
-	def vibrate(self, length, strength=None):
-		self.cmd(md.Vibration(length, strength))
-
-	def setLeds(self, *args):
-		"""[logoR, logoG, logoB], [lineR, lineG, lineB] or
-		[logoR, logoG, logoB, lineR, lineG, lineB]"""
-
-		if len(args) == 1:
-			args = args[0]
-
-		if len(args) == 2:
-			pay = md.Led(args[0], args[1])
-		elif len(args) == 6:
-			pay = md.Led(args[0:3], args[3:6])
-		else:
-			raise Exception('Unknown data')
-		self.writeCharacteristic(0x19, pay.data, True)
 
 
 class MyoDevice(btle.DefaultDelegate):
