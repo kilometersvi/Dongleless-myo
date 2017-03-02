@@ -68,9 +68,8 @@ class Connection(btle.Peripheral):
 		# print('firmware version: %d.%d.%d.%d' % struct.unpack('4h', fw))
 
 		self.name = self.readCharacteristic(0x03).decode("utf-8")
-		# print('device name: %s' % name)
+		logging.info('device name: %s' % self.name)
 
-		# self.start_raw()
 		# info = self.info()
 		self.cmd(md.SleepMode().never())
 

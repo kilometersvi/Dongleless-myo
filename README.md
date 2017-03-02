@@ -1,28 +1,22 @@
 #Dongleless Myo
 =======================
 
-For if you don't have your dongle but just need to control a linux system anyway, with a different dongle or you computer's built in bluetooth.
-
+For if you don't have your dongle but just need to use myo anyway, with a different dongle or you computer's built in bluetooth.
 
 
 ##Setup
 -------
-First, get a linux system, it's mainly been tested on debian and ubuntu.
+Go through the setup for bluez and [bluepy](https://github.com/IanHarvey/bluepy), and run the bluepy test program to make sure it works. (This step can be a bit of a pain). Make sure the bluepy files are somewhere python can see.
 
-Second, go through the setup for bluez and [bluepy](https://github.com/IanHarvey/bluepy), and run the bluepy test program to make sure it works. (This step can be a bit of a pain). Make sure the bluepy files are somewhere python can see.
+Download project and put it somewhere convenient to import where it can import bluepy.
 
-Download dongleless.py and put it somewhere convenient to import where it can import bluepy, and put myo_dicts.py in the same folder.
 
 ##Limitations
 -------------
+* Tested only on Linux OS
 
-* Currently does not work with multiple myos. It appears bluepy can only listen to one connection at a time, and switching back and forth quickly seems to cause both myos to glitch.
+* Can't provide emg and pose data at the same time. 
 
-* There is a glitch where sometimes the myo stops receiving classifier indications, almost always after being taken off while the program is running. Plugging the myo in or letting it go to sleep by placing it on a flat surface for ~30 seconds fixes it.
-
-* Currently has a list of handles to read/write from, rather than using the uuids. It's possible, though unlikely, that a future firmware update will change those handles, in which case they would need to be updated in the code.
-
-* Can't provide emg and pose data at the same time. Currently, it provides emg until it's synced, then provides poses instead.
 
 ##Usage
 -------
