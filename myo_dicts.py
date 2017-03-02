@@ -107,9 +107,9 @@ class SetMode(cmd):
 			self.imu = imu_mode(data[1])
 			self.classifier = classifier_mode(data[2])
 		else:
-			self.emg = data
-			self.imu = imu
-			self.classifier = classifier
+			self.emg = emg_mode(data)
+			self.imu = imu_mode(imu)
+			self.classifier = classifier_mode(classifier)
 
 	@property
 	def value(self):
@@ -118,6 +118,7 @@ class SetMode(cmd):
 
 class emg_mode(Enum):
 	OFF = 0x00
+	DATA = 0x01  # ?
 	ON = 0x02
 	RAW = 0x03
 
@@ -295,10 +296,17 @@ class IMU:
 
 
 class EMG:
-	def __init__(self, data):
-		data = struct.unpack('<8HB', data)  # an extra byte for some reason
-		self.sample1 = data[:8]
-		self.sample2 = data[9:]
+	def __init__(self, data=None):
+		if data is not None:
+			data = struct.unpack('<8HB', data)  # an extra byte for some reason
+			self.sample1 = data[:8]
+			self.sample2 = data[9:]
+		else:
+			self.sample1 = list((0, 0, 0, 0))
+			self.sample2 = list((0, 0, 0, 0))
+
+	def __str__(self):
+		return 'EMG'+str(self.sample1 + self.sample2)
 
 
 class classifierEvent(Enum):

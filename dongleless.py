@@ -25,6 +25,7 @@ from quaternion import Quaternion
 # If the Myo is unsynced while the program is running, you will need to plug it in and let it fall asleep before poses will work again.
 # Mixes up fist and wave in when worn on left arm with led toward elbow
 
+logging.basicConfig(filename='myo.log', level=logging.DEBUG)
 
 class MyoState:
 	def __init__(self, connector):
@@ -37,6 +38,7 @@ class MyoState:
 		self.startq = Quaternion(0, 0, 0, 1)
 		self.napq = Quaternion(0, 0, 0, 1)
 		self.imu = md.IMU()
+		self.emg = md.EMG()
 
 	@property
 	def otn(self):
@@ -65,8 +67,9 @@ class Connection(btle.Peripheral):
 		# Subscribe to classifier indications
 		self.writeCharacteristic(md.handle.CLASSIFIER.value + 1, b'\x02\x00', True)
 		# Subscribe to emg notifications
-		# self.writeCharacteristic(md.handle.EMG.value+1, b'\x01\x00', True)
-		self.set_mode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
+		self.writeCharacteristic(md.handle.EMG.value+1, b'\x01\x00', True)
+
+		self.setMode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
 
 		self.firmware = md.firmware(self.readCharacteristic(0x17))
 		# print('firmware version: %d.%d.%d.%d' % struct.unpack('4h', fw))
@@ -76,7 +79,6 @@ class Connection(btle.Peripheral):
 
 		# self.start_raw()
 		# info = self.info()
-		# self.mc_end_collection()
 		self.resync()
 
 	def battery(self):
@@ -84,66 +86,20 @@ class Connection(btle.Peripheral):
 
 	def resync(self):
 		# self.writeCharacteristic(0x28, b'\x01\x00', True)
-		self.set_mode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.OFF)
-		self.set_mode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
+		self.setMode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.OFF)
+		self.setMode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
 
 	def cmd(self, pay):
 		self.writeCharacteristic(0x19, pay.data, True)
 
-	def sleep_mode(self, state):
+	def sleepMode(self, state):
 		self.cmd(md.SleepMode(state))
 
-	def set_mode(self, emg, imu, classifier):
-		self.cmd(md.SetMode((emg, imu, classifier)))
+	def setMode(self, emg, imu, classifier):
+		self.cmd(md.SetMode(emg, imu, classifier))
 
-	def mc_start_collection(self):
-		"""
-		Myo Connect sends this sequence (or a reordering) when starting data
-		collection for v1.0 firmware;
-		this enables raw data but disables arm and pose notifications.
-		:return: None
-		"""
-
-		self.writeCharacteristic(0x28, b'\x01\x00', True)
-		self.writeCharacteristic(0x1d, b'\x01\x00', True)
-
-		self.writeCharacteristic(0x24, b'\x02\x00', True)
-		self.set_mode(md.emg_mode.ON, md.imu_mode.DATA, md.classifier_mode.ON)
-		# self.set_mode(1, 1, 1)
-
-		self.writeCharacteristic(0x28, b'\x01\x00', True)
-		self.writeCharacteristic(0x1d, b'\x01\x00', True)
-
-		self.sleep_mode(True)
-		self.writeCharacteristic(0x1d, b'\x01\x00', True)
-		self.set_mode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.OFF)
-
-		self.writeCharacteristic(0x28, b'\x01\x00', True)
-		self.writeCharacteristic(0x1d, b'\x01\x00', True)
-		self.set_mode(md.emg_mode.ON, md.imu_mode.DATA, md.classifier_mode.OFF)
-
-	def mc_end_collection(self):
-		"""Myo Connect sends this sequence (or a reordering) when ending data collection
-		for v1.0 firmware; this reenables arm and pose notifications, but
-		doesn't disable raw data.
-		:return: None
-		"""
-
-		self.writeCharacteristic(0x28, b'\x01\x00')
-		self.writeCharacteristic(0x1d, b'\x01\x00')
-
-		self.writeCharacteristic(0x24, b'\x02\x00')
-		self.set_mode(md.emg_mode.ON, md.imu_mode.DATA, md.classifier_mode.ON)
-		self.sleep_mode(False)
-		self.writeCharacteristic(0x1d, b'\x01\x00')
-		self.writeCharacteristic(0x24, b'\x02\x00')
-		self.set_mode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
-
-		self.writeCharacteristic(0x28, b'\x01\x00')
-		self.writeCharacteristic(0x1d, b'\x01\x00')
-
-		self.writeCharacteristic(0x24, b'\x02\x00')
-		self.set_mode(md.emg_mode.ON, md.imu_mode.DATA, md.classifier_mode.ON)
+	def emg_mode(self, state=True):
+		self.setMode(1 if state else 0, 1, 0 if state else 1)  # Enable EMG and IMU data, disable pose classifier
 
 	def info(self):
 		out = dict()
@@ -400,6 +356,7 @@ def run():
 			logging.info("Initializing bluepy connection")
 			myo = MyoDevice()
 			myo.on_pose = lambda x: print(x.pose.name)
+			myo.on_emg = lambda x: print(x.emg)
 
 			myo.connection.setLeds([0, 0, 0, 0, 0, 0])
 			time.sleep(1)
@@ -412,6 +369,12 @@ def run():
 			myo.connection.setLeds([0, 0, 255], [0, 0, 255])
 			myo.connection.vibrate(1)
 			time.sleep(1)
+
+			logging.info("Emg mode ON")
+			myo.connection.emg_mode()
+			time.sleep(5)
+			myo.connection.emg_mode(False)
+			logging.info("Emg mode OFF")
 
 			logging.info("Initialization complete.")
 			while True:
