@@ -87,7 +87,6 @@ class Connection(btle.Peripheral):
 		return ord(self.readCharacteristic(0x11))
 
 	def resync(self):
-		# self.writeCharacteristic(0x28, b'\x01\x00', True)
 		self.setMode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.OFF)
 		self.setMode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
 

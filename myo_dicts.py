@@ -402,3 +402,6 @@ class UUID(Enum):
 	EMG1_DATA = "d5060205-a904-deb9-4748-2c7f4a124842"
 	EMG2_DATA = "d5060305-a904-deb9-4748-2c7f4a124842"
 	EMG3_DATA = "d5060405-a904-deb9-4748-2c7f4a124842"
+
+	def __str__(self):
+		return str(self.value)
