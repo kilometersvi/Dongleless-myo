@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import binascii
+import logging
 import struct
 import time
 
@@ -8,8 +9,6 @@ from bluepy import btle
 
 import myo_dicts as md
 from quaternion import Quaternion
-
-import logging
 
 
 # Author:
@@ -46,10 +45,6 @@ class MyoState:
 		else:
 			return self.imu.quat
 
-	def vibrate(self, length):
-		if length in range(1, 4):
-			self.connection.writeCharacteristic(0x19, struct.pack('<bbb', 0x03, 0x01, length), True)
-
 	def __str__(self):
 		if self.pose not in ["rest", "unknown"]:
 			a = ~self.imu.quat * self.napq
@@ -73,7 +68,7 @@ class Connection(btle.Peripheral):
 		# self.writeCharacteristic(md.handle.EMG.value+1, b'\x01\x00', True)
 		self.set_mode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
 
-		self.fw = self.readCharacteristic(0x17)
+		self.firmware = md.firmware(self.readCharacteristic(0x17))
 		# print('firmware version: %d.%d.%d.%d' % struct.unpack('4h', fw))
 
 		self.name = self.readCharacteristic(0x03).decode("utf-8")
@@ -81,28 +76,25 @@ class Connection(btle.Peripheral):
 
 		# self.start_raw()
 		# info = self.info()
-
 		# self.mc_end_collection()
 		self.resync()
 
 	def battery(self):
-		return ord(self.readCharacteristic(17))
+		return ord(self.readCharacteristic(0x11))
 
 	def resync(self):
 		# self.writeCharacteristic(0x28, b'\x01\x00', True)
 		self.set_mode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.OFF)
 		self.set_mode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
 
-	def cmd(self, c, p):
-		l = len(p)
-		cmd = md.command(bytearray([c, l]) + bytearray([chr(i) for i in p]))
-		self.writeCharacteristic(0x19, cmd.data(), True)
+	def cmd(self, pay):
+		self.writeCharacteristic(0x19, pay.data, True)
 
 	def sleep_mode(self, state):
-		self.cmd(9, [state])
+		self.cmd(md.SleepMode(state))
 
 	def set_mode(self, emg, imu, classifier):
-		self.cmd(1, [emg, imu, classifier])
+		self.cmd(md.SetMode((emg, imu, classifier)))
 
 	def mc_start_collection(self):
 		"""
@@ -232,11 +224,6 @@ class Connection(btle.Peripheral):
 							logging.info('\t%s: %s' % (name, b))
 							dat.update({name: b})
 							continue
-						if name == 'Command':
-							b = md.command(b)
-							logging.info('\t%s: %s' % (name, b))
-							dat.update({name: b})
-							continue
 
 						logging.info('\t%s: %s' % (name, b))
 						dat.update({name: list(b)})
@@ -247,6 +234,24 @@ class Connection(btle.Peripheral):
 			out.update({sname: dat})
 		return out
 
+	def vibrate(self, length, strength=None):
+		self.cmd(md.Vibration(length, strength))
+
+	def setLeds(self, *args):
+		"""[logoR, logoG, logoB], [lineR, lineG, lineB] or
+		[logoR, logoG, logoB, lineR, lineG, lineB]"""
+
+		if len(args) == 1:
+			args = args[0]
+
+		if len(args) == 2:
+			pay = md.Led(args[0], args[1])
+		elif len(args) == 6:
+			pay = md.Led(args[0:3], args[3:6])
+		else:
+			raise Exception('Unknown data')
+		self.writeCharacteristic(0x19, pay.data, True)
+
 
 class MyoDevice(btle.DefaultDelegate):
 	def __init__(self, mac=None):
@@ -256,7 +261,8 @@ class MyoDevice(btle.DefaultDelegate):
 		self.connection.setDelegate(self)
 
 		self.myo = MyoState(self.connection)
-		self.myo.vibrate(1)
+
+		self.connection.vibrate(1)
 
 	def handleNotification(self, cHandle, data):
 		try:
@@ -264,7 +270,7 @@ class MyoDevice(btle.DefaultDelegate):
 		except:
 			raise Exception('Unknown data handle +' % str(cHandle))
 
-		if handle == handle.CLASSIFIER:  # Classifier
+		if handle == handle.CLASSIFIER:
 			# sometimes gets the poses mixed up, if this happens, try wearing it in a different orientation.
 			data = struct.unpack('>6b', data)
 			try:
@@ -273,7 +279,7 @@ class MyoDevice(btle.DefaultDelegate):
 				raise Exception('Unknown classifier event: ' + str(data[0]))
 			if ev_type == ev_type.POSE:
 				self.myo.pose = md.pose(data[1])
-				if self.myo.pose == md.pose.UNSYNC:  # unsync
+				if self.myo.pose == md.pose.UNSYNC:
 					self.myo.synced = False
 					self.myo.arm = md.arm(-1)
 					self.myo.x_direction = md.x_direction(-1)
@@ -318,12 +324,11 @@ class MyoDevice(btle.DefaultDelegate):
 				elif ev_type == ev_type.WARMUP:
 					self.on_warmup(self.myo)
 
-
-		elif handle == handle.IMU:  # IMU
+		elif handle == handle.IMU:
 			self.myo.imu = md.IMU(data)
 			self.on_imu(self.myo)
 
-		elif handle == handle.EMG:  # EMG
+		elif handle == handle.EMG:
 			self.myo.emg = md.EMG(data)
 			self.on_emg(self.myo)
 
@@ -394,6 +399,20 @@ def run():
 		try:
 			logging.info("Initializing bluepy connection")
 			myo = MyoDevice()
+			myo.on_pose = lambda x: print(x.pose.name)
+
+			myo.connection.setLeds([0, 0, 0, 0, 0, 0])
+			time.sleep(1)
+			myo.connection.setLeds([255, 0, 0, 255, 0, 0])
+			myo.connection.vibrate(1)
+			time.sleep(1)
+			myo.connection.setLeds([0, 255, 0], [0, 255, 0])
+			myo.connection.vibrate(1)
+			time.sleep(1)
+			myo.connection.setLeds([0, 0, 255], [0, 0, 255])
+			myo.connection.vibrate(1)
+			time.sleep(1)
+
 			logging.info("Initialization complete.")
 			while True:
 				try:
@@ -408,4 +427,3 @@ def run():
 
 if __name__ == '__main__':
 	run()
-

@@ -77,19 +77,43 @@ class hardware_rev(Enum):
 	D = 2
 
 
-class setMode:
-	def __init__(self, data):
-		self.emg = emg_mode(data[0])
-		self.imu = imu_mode(data[1])
-		self.classifier = classifier_mode(data[2])
+class cmd(object):
+	cmd = 0x00
+
+	@property
+	def value(self):
+		return []
+
+	@property
+	def data(self):
+		return bytearray([chr(self.cmd), chr(len(self))]) + self.bytearray()
+
+	def bytearray(self):
+		return bytearray([chr(i) for i in self.value])
+
+	def __len__(self):
+		return len(self.value)
+
+	def __str__(self):
+		return str(type(self).__name__) + ': ' + str(self.value)
+
+
+class SetMode(cmd):
+	cmd = 0x01
+
+	def __init__(self, data, imu=None, classifier=None):
+		if hasattr(data, '__iter__'):
+			self.emg = emg_mode(data[0])
+			self.imu = imu_mode(data[1])
+			self.classifier = classifier_mode(data[2])
+		else:
+			self.emg = data
+			self.imu = imu
+			self.classifier = classifier
 
 	@property
 	def value(self):
 		return self.emg.value, self.imu.value, self.classifier.value
-
-
-class deep_sleep:
-	value = list()
 
 
 class emg_mode(Enum):
@@ -111,69 +135,122 @@ class classifier_mode(Enum):
 	ON = 0x01
 
 
-class vibration_type:
-	def __init__(self, data):
-		self.duration = data
+class DeepSleep(cmd):
+	cmd = 0x04
+
+	def __init__(self):
+		self.data = list()
 
 	@property
 	def value(self):
-		return list(self.duration)
+		return self.data
 
 
-class vibration2_type:
-	def __init__(self, data):
-		self.duration = data[0]
-		self.strength = data[1]
+class Vibration(cmd):
+	cmd = 0x03
+
+	def __init__(self, data, strength=None):
+		if type(data) == int:
+			if strength is None:
+				if data not in range(1, 4):
+					raise Exception('Wrong vibration time')
+				self.cmd = 0x03
+			else:
+				self.cmd = 0x07
+			self.duration = data
+			self.strength = strength
+		elif len(data) == 2:
+			self.cmd = 0x07
+			self.duration = data[0]
+			self.strength = data[1]
+		else:
+			raise Exception('Wrong data')
 
 	@property
 	def value(self):
-		return self.duration, self.strength
+		if self.cmd == 0x03:
+			return list([self.duration])
+		elif self.cmd == 0x07:
+			return list([self.duration >> 0xFF, self.duration & 0xFF, self.strength])
+		else:
+			raise Exception('Wrong cmd')
 
 
-class sleep_mode(Enum):
-	NORMAL = 0
-	NEVER = 1
+class Led(cmd):
+	cmd = 0x06
+
+	def __init__(self, logo, line):
+		"""[logoR, logoG, logoB], [lineR, lineG, lineB]"""
+		if len(logo) != 3 or len(line) != 3:
+			raise Exception('Led data: [r, g, b], [r, g, b]')
+
+		self.logo = logo
+		self.line = line
+
+	@property
+	def value(self):
+		return list(self.logo) + list(self.line)
 
 
-class unlock_type(Enum):
-	LOCK = 0
-	TIMED = 1
-	HOLD = 2
+class SleepMode(cmd):
+	cmd = 0x09
+
+	def normal(self):
+		self.mode = 0
+		return self
+
+	def never(self):
+		self.mode = 1
+		return self
+
+	def __init__(self, mode=0x00):
+		"""0 - normal, 1 - never sleep"""
+		if mode not in [0, 1]:
+			raise Exception('SleepMode: 0 - normal, 1 - never sleep')
+
+		self.mode = mode
+
+	@property
+	def value(self):
+		return list([self.mode])
 
 
-class user_action_type(Enum):
-	SINGLE = 0
+class Unlock(cmd):
+	data = 0x00
+
+	cmd = 0x0A
+
+	def lock(self):
+		self.data = 0x00
+		return self
+
+	def timed(self):
+		self.data = 0x01
+		return self
+
+	def hold(self):
+		self.data = 0x02
+		return self
+
+	def __init__(self, data=0x02):
+		self.data = data
+
+	@property
+	def value(self):
+		return list([self.data])
 
 
-class command:
-	SET_MODE = 1
-	VIBRATION = 3
-	DEEP_SLEEP = 4
-	VIBRATION2 = 7
-	SLEEP_MODE = 9
-	UNLOCK = 0x0A
-	USER_ACTION = 0x0B
+class UserAction(cmd):
+	data = 0x00
 
-	def __init__(self, data):
-		base = {
-			0x01: setMode,  # < Set EMG and IMU modes. See myohw_command_set_mode_t.
-			0x03: vibration_type,  # < Vibrate. See myohw_command_vibrate_t.
-			0x04: deep_sleep,  # < Put Myo into deep sleep. See myohw_command_deep_sleep_t.
-			0x07: vibration2_type,  # < Extended vibrate. See myohw_command_vibrate2_t.
-			0x09: sleep_mode,  # < Set sleep mode. See myohw_command_set_sleep_mode_t.
-			0x0a: unlock_type,  # < Unlock Myo. See myohw_command_unlock_t.
-			0x0b: user_action_type,  # < Notify user that an action has been recognized / confirmed.
-		}
-		self.cmd = data[0]
-		self.size = data[1]
-		self.pay = base[self.cmd](data[2:2 + self.size])
+	cmd = 0x0B
 
-	def data(self):
-		pay = bytearray([chr(i) for i in self.pay.value])
-		return bytearray([chr(self.cmd), chr(len(pay))]) + pay
+	def __init__(self, data=0x00):
+		self.data = data
 
-	def __str__(self):
-		return str(type(self.pay).__name__) + ': ' + str(self.pay)
+	@property
+	def value(self):
+		return 0x00
 
 
 class classifier_model_type(Enum):
