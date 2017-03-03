@@ -78,34 +78,42 @@ class Connection(btle.Peripheral):
 		self.resync()
 
 	def subscribe(self):
+		""" Subscribe to all notifications """
 		self.writeCharacteristic(md.handle.IMU.value + 1, b'\x01\x00', True)  # Subscribe to imu notifications
 		self.writeCharacteristic(md.handle.CLASSIFIER.value + 1, b'\x02\x00', True)  # Subscribe to classifier
 		self.writeCharacteristic(md.handle.EMG.value + 1, b'\x01\x00', True)  # Subscribe to emg notifications
 
 	def battery(self):
+		""" Battery % """
 		return ord(self.readCharacteristic(0x11))
 
 	def resync(self):
+		""" Reset classifier """
 		self.setMode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.OFF)
 		self.setMode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
 
 	def cmd(self, pay):
+		""" Send command to MYO (see cmd class)"""
 		self.writeCharacteristic(0x19, pay.data, True)
 
 	def setMode(self, emg, imu, classifier):
+		""" Set mode for EMG, IMU, classifier"""
 		self.cmd(md.SetMode(emg, imu, classifier))
 
 	def emg_mode(self, state=True):
+		""" Start to collect EMG data """
 		if not state:
 			self.setMode(md.emg_mode.OFF, md.imu_mode.DATA, md.classifier_mode.ON)
 		else:
 			self.setMode(md.emg_mode.ON, md.imu_mode.DATA, md.classifier_mode.OFF)
 
 	def vibrate(self, length, strength=None):
+		""" Vibrate for x ms """
 		self.cmd(md.Vibration(length, strength))
 
 	def setLeds(self, *args):
-		"""[logoR, logoG, logoB], [lineR, lineG, lineB] or
+		""" Set leds color
+		[logoR, logoG, logoB], [lineR, lineG, lineB] or
 		[logoR, logoG, logoB, lineR, lineG, lineB]"""
 
 		if len(args) == 1:
