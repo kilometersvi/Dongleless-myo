@@ -227,6 +227,10 @@ class MyoDevice(btle.DefaultDelegate):
 		self.myo = MyoState(self.connection)
 
 		self.connection.vibrate(1)
+		
+		self.myo.arm = md.arm(-1)
+		self.myo.pose = md.pose(-1)
+		self.myo.x_direction = md.x_direction(-1)
 
 	def handleNotification(self, cHandle, data):
 		try:
@@ -246,6 +250,7 @@ class MyoDevice(btle.DefaultDelegate):
 				if self.myo.pose == md.pose.UNSYNC:
 					self.myo.synced = False
 					self.myo.arm = md.arm(-1)
+					self.myo.pose = md.pose(-1)
 					self.myo.x_direction = md.x_direction(-1)
 					self.myo.startq = Quaternion(0, 0, 0, 1)
 					return
@@ -267,9 +272,9 @@ class MyoDevice(btle.DefaultDelegate):
 
 				elif ev_type == ev_type.UNSYNC:
 					self.myo.synced = False
-					self.myo.arm = md.arm(data[1])
-					self.myo.x_direction = md.x_direction(data[2])
-					self.myo.pose = md.pose(0)
+					self.myo.arm = md.arm(-1)
+					self.myo.x_direction = md.x_direction(-1)
+					self.myo.pose = md.pose(-1)
 					self.myo.startq = Quaternion(0, 0, 0, 1)
 
 					self.on_unsync(self.myo)

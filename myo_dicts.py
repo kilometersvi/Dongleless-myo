@@ -107,7 +107,10 @@ class SetMode(cmd):
 			self.imu = imu_mode(data[1])
 			self.classifier = classifier_mode(data[2])
 		else:
-			self.emg = emg_mode(data)
+			try:
+				self.emg = emg_mode(data)
+			except Exception as e:
+				raise Exception('You need to install lib Enum34, not Enum')
 			self.imu = imu_mode(imu)
 			self.classifier = classifier_mode(classifier)
 
