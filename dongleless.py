@@ -4,6 +4,7 @@ import binascii
 import logging
 import struct
 import time
+from MyoGrapher import MyoGrapher
 
 from bluepy import btle
 
@@ -364,12 +365,13 @@ def getMyo(mac=None):
 
 
 def run():
-	while True:
+    myoGrapher = MyoGrapher()
+    while True:
 		try:
 			logging.info("Initializing bluepy connection")
 			myo = MyoDevice()
 			myo.on_pose = lambda x: print(x.pose.name)
-			myo.on_emg = lambda x: print(x.emg)
+			myo.on_emg = lambda x: myoGrapher.emg_plot(x.emg.list())
 
 			myo.connection.setLeds([0, 0, 0, 0, 0, 0])
 			time.sleep(1)
@@ -386,8 +388,8 @@ def run():
 			logging.info("Emg mode ON")
 			myo.connection.emg_mode()
 			time.sleep(5)
-			myo.connection.emg_mode(False)
-			logging.info("Emg mode OFF")
+			#myo.connection.emg_mode(False)
+			#logging.info("Emg mode OFF")
 
 			logging.info("Initialization complete.")
 			while True:

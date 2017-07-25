@@ -310,6 +310,8 @@ class EMG:
 
 	def __str__(self):
 		return 'EMG'+str(self.sample1 + self.sample2)
+	def list(self):
+		return list(self.sample1 + self.sample2)
 
 
 class classifierEvent(Enum):
