@@ -8,6 +8,14 @@ from MyoGrapher import MyoGrapher
 
 from bluepy import btle
 
+import inspect, os
+import sys
+filename = inspect.getframeinfo(inspect.currentframe()).filename
+spath     = os.path.dirname(os.path.abspath(filename))
+print(spath)
+sys.path.insert(0, spath)
+
+
 import myo_dicts as md
 from quaternion import Quaternion
 
