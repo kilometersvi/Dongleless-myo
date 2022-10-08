@@ -228,7 +228,7 @@ class MyoDevice(btle.DefaultDelegate):
 		self.myo = MyoState(self.connection)
 
 		self.connection.vibrate(1)
-		
+
 		self.myo.arm = md.arm(-1)
 		self.myo.pose = md.pose(-1)
 		self.myo.x_direction = md.x_direction(-1)
@@ -341,8 +341,8 @@ class MyoDevice(btle.DefaultDelegate):
 
 # take a list of the events.
 events = ("rest", "fist", "wave_in", "wave_out", "wave_left", "wave_right",
-          "fingers_spread", "double_tap", "unknown", "arm_synced", "arm_unsynced",
-          "orientation_data", "gyroscope_data", "accelerometer_data", "imu_data", "emg_data")
+		"fingers_spread", "double_tap", "unknown", "arm_synced", "arm_unsynced",
+		"orientation_data", "gyroscope_data", "accelerometer_data", "imu_data", "emg_data")
 
 
 def getMyo(mac=None):
@@ -365,8 +365,8 @@ def getMyo(mac=None):
 
 
 def run():
-    myoGrapher = MyoGrapher()
-    while True:
+	myoGrapher = MyoGrapher()
+	while True:
 		try:
 			logging.info("Initializing bluepy connection")
 			myo = MyoDevice()
