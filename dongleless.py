@@ -4,18 +4,15 @@ import binascii
 import logging
 import struct
 import time
-from MyoGrapher import MyoGrapher
 
 from bluepy import btle
 
 import inspect, os
 import sys
 filename = inspect.getframeinfo(inspect.currentframe()).filename
-spath     = os.path.dirname(os.path.abspath(filename))
+spath = os.path.dirname(os.path.abspath(filename))
 print(spath)
 sys.path.insert(0, spath)
-
-
 import myo_dicts as md
 from quaternion import Quaternion
 
@@ -372,15 +369,18 @@ def getMyo(mac=None):
 		logging.info('Try #' + str(cnt))
 
 
-def run():
-	myoGrapher = MyoGrapher()
+def run(useMyoGrapher=False):
+	if useMyoGrapher:
+		myoGrapher = MyoGrapher()
 	while True:
 		try:
 			logging.info("Initializing bluepy connection")
 			myo = MyoDevice()
 			myo.on_pose = lambda x: print(x.pose.name)
-			myo.on_emg = lambda x: myoGrapher.emg_plot(x.emg.list())
-
+			if useMyoGrapher:
+				myo.on_emg = lambda x: myoGrapher.emg_plot(x.emg.list())
+			else:
+				myo.on_emg = lambda x: print(x.emg)
 			myo.connection.setLeds([0, 0, 0, 0, 0, 0])
 			time.sleep(1)
 			myo.connection.setLeds([255, 0, 0, 255, 0, 0])
