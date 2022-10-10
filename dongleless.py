@@ -30,7 +30,7 @@ from quaternion import Quaternion
 # If the Myo is unsynced while the program is running, you will need to plug it in and let it fall asleep before poses will work again.
 # Mixes up fist and wave in when worn on left arm with led toward elbow
 
-logging.basicConfig(filename='../logs/myo.log', level=logging.DEBUG)
+logging.basicConfig(filename='logs/myo.log', level=logging.DEBUG)
 
 
 class MyoState:
