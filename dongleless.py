@@ -359,15 +359,16 @@ def getMyo(mac=None):
 				if i.addr == mac:
 					return str(mac).upper()
 			cnt += 1
-			logging.info('Try #' + str(cnt))
+			logging.info('MAC scan try #' + str(cnt))
 
 	while True:
 		for i in btle.Scanner(0).scan(1):
 			for j in i.getScanData():
-				print(j)
+				logging.info(j)
 				if j[0] == 6 and j[2] == '4248124a7f2c4847b9de04a9010006d5':
 					return str(i.addr).upper()
-		logging.info('Try #' + str(cnt))
+		cnt += 1
+		logging.info('Myo scan try #' + str(cnt))
 
 
 def run(useMyoGrapher=False):
