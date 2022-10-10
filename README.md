@@ -15,7 +15,7 @@ Download project and put it somewhere convenient to import where it can import b
 -------------
 * Tested only on Linux OS
 
-* Can't provide emg and pose data at the same time. 
+* Can't provide emg and pose data at the same time.
 
 
 ## Usage (GOTTA REMOVE THE MyoGrapher PARTS)
@@ -31,3 +31,23 @@ The myo argument to the functions represents the myo, but currently the only fun
 Running `python dongleless.py` will launch the MyoGrapher and plot the EMG data.
 
 Gotta install: [MyoGrapher](https://github.com/RaquenaTeam/MyoGrapher)
+
+
+## Troubleshooting
+### Failed to execute mgmt cmd 'le on'
+Use commands:
+```
+sudo setcap cap_net_raw+e  <PATH>/bluepy-helper
+sudo setcap cap_net_admin+eip  <PATH>/bluepy-helper
+```
+or use sudo
+
+### Failed to execute mgmt cmd 'scanend'
+try to reboot ble:
+```
+sudo hciconfig hci0 down && sudo hciconfig hci0 up
+```
+or
+```
+sudo rfkill block 0 && sudo rfkill unblock 0
+```
