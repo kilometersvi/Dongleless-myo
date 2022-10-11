@@ -363,8 +363,8 @@ def getMyo(mac=None):
 
 	while True:
 		for i in btle.Scanner(0).scan(1):
+			logging.info(i)
 			for j in i.getScanData():
-				logging.info(j)
 				if j[0] == 6 and j[2] == '4248124a7f2c4847b9de04a9010006d5':
 					return str(i.addr).upper()
 		cnt += 1
